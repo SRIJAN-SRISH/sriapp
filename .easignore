@@ -1,0 +1,30 @@
+# Files EAS Build should NOT upload (used because git isn't installed;
+# EAS then reads this file instead of .gitignore).
+
+node_modules/
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+.git/
+
+# Native folders are generated in the cloud
+/ios
+/android
+
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem
+.metro-health-check*
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.DS_Store
+.env*.local
+*.tsbuildinfo
+app-example
