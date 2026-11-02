@@ -65,9 +65,23 @@ export default function AssistantScreen() {
   }, []);
 
   useEffect(() => {
-    checkSrish().then((h) => setServer(h ? "online" : "offline"));
-    // Abort a half-written answer if the screen goes away
-    return () => cancelRef.current?.();
+    let alive = true;
+    const poll = () =>
+      checkSrish().then((h) => {
+        if (alive) setServer(h ? "online" : "offline");
+      });
+
+    poll();
+    // Keep checking, so the badge recovers on its own once the model is back up
+    // instead of waiting for the next send or a manual retry.
+    const timer = setInterval(poll, 20000);
+
+    return () => {
+      alive = false;
+      clearInterval(timer);
+      // Abort a half-written answer if the screen goes away
+      cancelRef.current?.();
+    };
   }, []);
 
   // Send `text` as a new turn after `base` (the conversation so far).
@@ -104,8 +118,17 @@ export default function AssistantScreen() {
           })),
         onToken: (t) => patch((m) => ({ content: m.content + t, status: "streaming" })),
         onDone: (r) => {
-          setServer("online");
+          // A turn can complete while Ollama is down -- the server still sends a
+          // polite "cannot answer" reply. Treating that as proof of life showed
+          // "Online" for a bot that could not answer anything, so trust the flag.
+          setServer(r.backend_down ? "offline" : "online");
           patch((m) => {
+            if (r.backend_down) {
+              return {
+                status: "error",
+                error: "Srish offline hai — model band hai. Laptop par model chalu karein.",
+              };
+            }
             const reply = r.reply || m.content;
             if (!reply) {
               return { status: "error", error: "Srish abhi jawab nahi de paayi. Thodi der baad try karein." };

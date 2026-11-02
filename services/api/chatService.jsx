@@ -37,17 +37,43 @@ function body(message, history, { farmId, depth } = {}) {
   });
 }
 
-/** Is the bot up? Returns the /health payload, or null if unreachable. */
-export async function checkSrish() {
+/** Raw /health, or null if the API could not be reached at all.
+ *
+ * Note that reaching it is not the same as Srish being usable: the API process
+ * stays healthy while Ollama is stopped. Read `ready` for that, or use
+ * checkSrish() below, which already folds it in.
+ */
+export async function srishHealth() {
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 8000);
     const res = await fetch(`${SRISH_API_URL}/health`, { signal: ctrl.signal });
     clearTimeout(timer);
-    return res.ok ? await res.json() : null;
+    if (!res.ok) return null;
+    const h = await res.json();
+    // Older servers predate `ready`; infer it so an upgrade is not required.
+    if (h.ready === undefined) {
+      h.ready = !!(h.ollama && h.router_model_present && h.chat_model_present);
+    }
+    return h;
   } catch {
     return null;
   }
+}
+
+/** Can Srish actually answer right now?
+ *
+ * Returns the health payload when yes, null when no — so a caller can do
+ * `checkSrish().then(h => setState(h ? "online" : "offline"))`.
+ *
+ * Returning null when the models are missing is deliberate. /health answers 200
+ * whenever the API process is alive, which it is even with Ollama stopped, so
+ * trusting the HTTP status alone reported "online" for a bot that could not
+ * answer a single question.
+ */
+export async function checkSrish() {
+  const h = await srishHealth();
+  return h && h.ready ? h : null;
 }
 
 /**
