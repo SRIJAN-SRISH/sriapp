@@ -18,7 +18,8 @@ const OFFLINE =
 
 function friendly(err) {
   const msg = err?.message || "";
-  if (/Network request failed|fetch|timeout|timed out/i.test(msg)) {
+  // "Aborted" is askSrish's own timeout firing the AbortController
+  if (/Network request failed|fetch|timeout|timed out|abort/i.test(msg)) {
     return new Error(OFFLINE);
   }
   return new Error(msg || "Srish could not answer right now.");

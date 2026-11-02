@@ -7,6 +7,7 @@ import AddDeviceScreen from "../screens/device/AddDeviceScreen";
 import DeviceDetailsScreen from "../screens/device/DeviceDetailsScreen";
 import DeviceListScreen from "../screens/device/DeviceListScreen";
 import AlertsScreen from "../screens/main/AlertsScreen";
+import AssistantScreen from "../screens/main/AssistantScreen";
 import DashboardScreen from "../screens/main/dashboardScreen";
 import FarmOverviewScreen from "../screens/main/FarmOverviewScreen";
 import IrrigationScreen from "../screens/main/IrrigationScreen";
@@ -22,6 +23,7 @@ const Stack = createNativeStackNavigator();
 const TAB_ICONS = {
   Home: ["home-variant", "home-variant-outline"],
   Sensors: ["chart-box", "chart-box-outline"],
+  Assistant: ["robot-happy", "robot-happy-outline"],
   Irrigation: ["water", "water-outline"],
   Device: ["router-wireless", "router-wireless"],
   Profile: ["account-circle", "account-circle-outline"],
@@ -43,6 +45,7 @@ function Tabs() {
     >
       <Tab.Screen name="Home" component={DashboardScreen} />
       <Tab.Screen name="Sensors" component={SensorDataScreen} />
+      <Tab.Screen name="Assistant" component={AssistantScreen} options={{ title: "Srish" }} />
       <Tab.Screen name="Irrigation" component={IrrigationScreen} />
       <Tab.Screen name="Device" component={DeviceListScreen} options={{ title: "Devices" }} />
       <Tab.Screen name="Profile" component={ProfileScreen} options={{ title: "Account" }} />
