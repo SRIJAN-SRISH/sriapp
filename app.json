@@ -2,7 +2,7 @@
   "expo": {
     "name": "Srijan",
     "slug": "Srijan",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "srijan",
@@ -17,7 +17,7 @@
     },
     "android": {
       "package": "com.srijan.agrosmart",
-      "versionCode": 2,
+      "versionCode": 3,
       "adaptiveIcon": {
         "backgroundColor": "#F4F6EB",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
