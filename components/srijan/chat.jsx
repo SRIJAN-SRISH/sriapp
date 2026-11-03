@@ -1,24 +1,32 @@
-// Chat building blocks for the Srish assistant screen.
+// Chat building blocks for the Srish screen. Styled like a familiar messaging
+// app (bubbles, times, ticks) so it feels like texting a farm helper.
 
 import { useEffect, useState } from "react";
 import { Animated, Pressable, StyleSheet, Text, View } from "react-native";
 
-import { C, SHADOW } from "../../constants/colors";
-import { Badge, Icon } from "./ui";
+import { C } from "../../constants/colors";
+import { Icon } from "./ui";
 
-// What the router decided the question was about → label shown on the reply.
-const INTENT_LABELS = {
-  tomato_disease: ["Disease help", "bug-outline", "danger"],
-  tomato_general: ["Tomato care", "sprout-outline", "primary"],
-  farm_status: ["Your farm now", "access-point", "water"],
-  farm_report: ["Farm report", "chart-box-outline", "water"],
-  url_query: ["From a link", "link-variant", "info"],
-};
+export const CHAT_BG = "#EEF4EC";
 
-export function SrishAvatar({ size = 30 }) {
+export function clockTime(date) {
+  if (!date) return "";
+  const d = new Date(date);
+  const h = d.getHours();
+  const m = String(d.getMinutes()).padStart(2, "0");
+  return `${h % 12 || 12}:${m} ${h < 12 ? "am" : "pm"}`;
+}
+
+export function SrishAvatar({ size = 30, ring }) {
   return (
-    <View style={[c.avatar, { width: size, height: size, borderRadius: size / 2 }]}>
-      <Icon name="robot-happy-outline" size={size * 0.58} color={C.white} />
+    <View
+      style={[
+        c.avatar,
+        { width: size, height: size, borderRadius: size / 2 },
+        ring && { borderWidth: 2, borderColor: "rgba(255,255,255,0.35)" },
+      ]}
+    >
+      <Icon name="sprout" size={size * 0.56} color={C.white} />
     </View>
   );
 }
@@ -78,7 +86,7 @@ export function RichText({ text, style }) {
   );
 }
 
-// ─── Three bouncing dots while Srish is thinking ─────────────────────────────
+// ─── Three bouncing dots, like "typing…" in a messaging app ─────────────────
 function Dot({ delay }) {
   const [v] = useState(() => new Animated.Value(0));
   useEffect(() => {
@@ -117,67 +125,83 @@ export function TypingDots() {
 }
 
 // ─── Message bubbles ─────────────────────────────────────────────────────────
-export function UserBubble({ text }) {
+export function DayChip({ label }) {
+  return (
+    <View style={c.dayChip}>
+      <Text style={c.dayChipTxt}>{label}</Text>
+    </View>
+  );
+}
+
+export function UserBubble({ text, at }) {
   return (
     <View style={c.userRow}>
       <View style={c.userBubble}>
         <Text style={c.userTxt}>{text}</Text>
+        <View style={c.metaRow}>
+          <Text style={c.userTime}>{clockTime(at)}</Text>
+          <Icon name="check-all" size={14} color="#BDE8CC" style={{ marginLeft: 3 }} />
+        </View>
       </View>
     </View>
   );
 }
 
 export function SrishBubble({ msg, onRetry }) {
-  const { content, status, meta, error } = msg;
-  const intent = meta?.intent ? INTENT_LABELS[meta.intent] : null;
+  const { content, status, meta, error, at } = msg;
   const thinking = status === "pending" && !content;
+
+  if (thinking) {
+    return (
+      <View style={c.botRow}>
+        <View style={[c.botBubble, { paddingVertical: 14 }]}>
+          <TypingDots />
+        </View>
+      </View>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <View style={c.botRow}>
+        <View style={[c.botBubble, c.botBubbleError]}>
+          <View style={{ flexDirection: "row" }}>
+            <Icon name="alert-circle-outline" size={18} color={C.danger} style={{ marginTop: 1 }} />
+            <Text style={[c.botTxt, { flex: 1, marginLeft: 6 }]}>{error}</Text>
+          </View>
+          {onRetry ? (
+            <Pressable onPress={onRetry} hitSlop={8} style={c.retryBtn}>
+              <Icon name="refresh" size={16} color={C.primaryDark} />
+              <Text style={c.retryTxt}>Dobara bhejein</Text>
+            </Pressable>
+          ) : null}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={c.botRow}>
-      <SrishAvatar size={28} />
-      <View style={{ flex: 1, marginLeft: 8 }}>
-        <View style={[c.botBubble, status === "error" && c.botBubbleError]}>
-          {thinking ? (
-            <View style={{ flexDirection: "row", alignItems: "center" }}>
-              <TypingDots />
-              <Text style={c.thinkingTxt}>{meta ? "Jawab likh rahi hoon…" : "Soch rahi hoon…"}</Text>
-            </View>
-          ) : status === "error" ? (
-            <View style={{ flexDirection: "row" }}>
-              <Icon name="wifi-off" size={18} color={C.danger} style={{ marginTop: 1 }} />
-              <View style={{ flex: 1, marginLeft: 8 }}>
-                <Text style={c.errTxt}>{error}</Text>
-                {onRetry ? (
-                  <Pressable onPress={onRetry} hitSlop={8} style={{ marginTop: 6 }}>
-                    <Text style={c.retryTxt}>Try again</Text>
-                  </Pressable>
-                ) : null}
-              </View>
-            </View>
-          ) : (
-            <>
-              <RichText text={content} style={c.botTxt} />
-              {status === "streaming" ? <View style={c.caret} /> : null}
-              {msg.stopped ? <Text style={c.stoppedTxt}>Stopped</Text> : null}
-            </>
-          )}
-        </View>
-
-        {status === "done" && (intent || meta?.degraded || meta?.usedKb) ? (
-          <View style={c.tags}>
-            {intent ? <Badge label={intent[0]} icon={intent[1]} tone={intent[2]} /> : null}
-            {meta?.usedKb ? (
-              <Badge
-                label={meta.kbDisease ? `Knowledge base · ${meta.kbDisease}` : "Knowledge base"}
-                icon="book-open-variant"
-                tone="primary"
-              />
-            ) : null}
-            {meta?.degraded ? (
-              <Badge label="Quick answer · please double-check" icon="alert-outline" tone="warn" />
-            ) : null}
+      <View style={c.botBubble}>
+        <RichText text={content} style={c.botTxt} />
+        {meta?.usedKb && status === "done" ? (
+          <View style={c.note}>
+            <Icon name="book-open-page-variant-outline" size={13} color={C.primary} />
+            <Text style={c.noteTxt}>
+              Tomato rog guide se{meta.kbDisease ? ` · ${meta.kbDisease}` : ""}
+            </Text>
           </View>
         ) : null}
+        {meta?.degraded && status === "done" ? (
+          <View style={c.note}>
+            <Icon name="information-outline" size={13} color={C.warn} />
+            <Text style={[c.noteTxt, { color: C.warn }]}>Jaldi ka jawab — ek baar confirm kar lein</Text>
+          </View>
+        ) : null}
+        <View style={c.metaRow}>
+          {msg.stopped ? <Text style={c.botTime}>rok diya · </Text> : null}
+          <Text style={c.botTime}>{status === "streaming" ? "likh rahi hai…" : clockTime(at)}</Text>
+        </View>
       </View>
     </View>
   );
@@ -190,40 +214,73 @@ const c = StyleSheet.create({
   bulletDot: { width: 14, color: C.primary, fontWeight: "900" },
   number: { minWidth: 20, color: C.primary, fontWeight: "800" },
 
-  dots: { flexDirection: "row", alignItems: "center", height: 16, gap: 4 },
-  dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.primary },
+  dots: { flexDirection: "row", alignItems: "center", height: 12, gap: 5, paddingHorizontal: 4 },
+  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: C.textFaint },
 
-  userRow: { flexDirection: "row", justifyContent: "flex-end", marginBottom: 12, paddingLeft: 48 },
+  dayChip: {
+    alignSelf: "center",
+    backgroundColor: "rgba(255,255,255,0.85)",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginBottom: 12,
+  },
+  dayChipTxt: { fontSize: 12, color: C.textMuted, fontWeight: "700" },
+
+  metaRow: { flexDirection: "row", alignItems: "center", alignSelf: "flex-end", marginTop: 3 },
+
+  userRow: { flexDirection: "row", justifyContent: "flex-end", marginBottom: 8, paddingLeft: 56 },
   userBubble: {
     backgroundColor: C.primary,
-    borderRadius: 18,
-    borderBottomRightRadius: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    borderRadius: 16,
+    borderTopRightRadius: 4,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 6,
   },
-  userTxt: { color: C.white, fontSize: 15, lineHeight: 21 },
+  userTxt: { color: C.white, fontSize: 15.5, lineHeight: 21 },
+  userTime: { fontSize: 10.5, color: "#D3EEDD" },
 
-  botRow: { flexDirection: "row", alignItems: "flex-start", marginBottom: 14, paddingRight: 24 },
+  botRow: { flexDirection: "row", marginBottom: 8, paddingRight: 40 },
   botBubble: {
-    alignSelf: "flex-start",
-    backgroundColor: C.card,
-    borderRadius: 18,
-    borderTopLeftRadius: 6,
-    borderWidth: 1,
-    borderColor: C.border,
-    paddingHorizontal: 14,
-    paddingVertical: 11,
+    backgroundColor: C.white,
+    borderRadius: 16,
+    borderTopLeftRadius: 4,
+    paddingHorizontal: 12,
+    paddingTop: 8,
+    paddingBottom: 6,
     maxWidth: "100%",
-    ...SHADOW,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
     elevation: 1,
   },
-  botBubbleError: { backgroundColor: C.dangerSoft, borderColor: C.danger + "33" },
-  botTxt: { color: C.text, fontSize: 15, lineHeight: 22 },
-  thinkingTxt: { marginLeft: 10, fontSize: 13.5, color: C.textMuted, fontWeight: "600" },
-  caret: { width: 8, height: 15, borderRadius: 2, backgroundColor: C.primaryMid, marginTop: 4 },
-  stoppedTxt: { marginTop: 6, fontSize: 12, color: C.textFaint, fontStyle: "italic" },
-  errTxt: { fontSize: 14, color: C.text, lineHeight: 20 },
-  retryTxt: { fontSize: 13.5, fontWeight: "800", color: C.danger },
+  botBubbleError: { backgroundColor: "#FFF5F5" },
+  botTxt: { color: C.text, fontSize: 15.5, lineHeight: 22 },
+  botTime: { fontSize: 10.5, color: C.textFaint },
 
-  tags: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginTop: 6 },
+  note: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    marginTop: 8,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: C.divider,
+  },
+  noteTxt: { fontSize: 12, color: C.primary, fontWeight: "600", flexShrink: 1 },
+
+  retryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+    alignSelf: "flex-start",
+    marginTop: 8,
+    backgroundColor: C.primarySoft,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+  },
+  retryTxt: { fontSize: 13, fontWeight: "800", color: C.primaryDark },
 });

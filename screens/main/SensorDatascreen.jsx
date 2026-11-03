@@ -56,7 +56,7 @@ export default function SensorDataScreen() {
 
   return (
     <Screen
-      title="Sensors"
+      title="Soil & weather"
       subtitle={`${farmId} · ${records.length} recent readings`}
       refreshing={refreshing}
       onRefresh={reload}

@@ -82,6 +82,7 @@ export default function ProfileScreen({ navigation }) {
 
       <SectionHeader title="Settings" style={{ marginTop: 20 }} />
       <Card padded={false}>
+        <MenuRow icon="router-wireless" label="My devices" onPress={() => navigation.navigate("Device")} />
         <MenuRow icon="account-edit-outline" label="Edit profile" onPress={() => navigation.navigate("EditProfile")} />
         <MenuRow icon="lock-outline" label="Change password" onPress={() => navigation.navigate("ChangePassword")} />
         <MenuRow icon="swap-horizontal" label="Change linked farm" onPress={() => navigation.navigate("LinkFarm")} />

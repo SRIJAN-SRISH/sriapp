@@ -1,4 +1,4 @@
-// Srish — the tomato-expert chat assistant. Answers stream in word by word
+// Srish — the tomato-expert chat helper. Answers stream in word by word
 // from the Srish API (see services/api/chatService.jsx).
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -13,25 +13,28 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
-import { SrishAvatar, SrishBubble, UserBubble } from "../../components/srijan/chat";
+import { CHAT_BG, DayChip, SrishAvatar, SrishBubble, UserBubble } from "../../components/srijan/chat";
 import { TopInset } from "../../components/srijan/layout";
-import { Badge, Banner, Card, Icon } from "../../components/srijan/ui";
-import { C, RADIUS, SHADOW } from "../../constants/colors";
+import { Icon } from "../../components/srijan/ui";
+import { C } from "../../constants/colors";
 import { useAuth } from "../../context/AuthContext";
 import { checkSrish, streamSrish } from "../../services/api/chatService";
 
-const SUGGESTIONS = [
-  { icon: "leaf", text: "Tomato ke patte peele kyon ho rahe hain?" },
-  { icon: "bug-outline", text: "Early blight ka ilaaj kya hai?" },
-  { icon: "water-outline", text: "Tomato ko kitna paani dena chahiye?" },
-  { icon: "access-point", text: "Mere khet ka abhi kya haal hai?" },
-];
-
-const STATUS = {
-  checking: { label: "Connecting…", color: C.warn },
-  online: { label: "Online · tomato expert", color: C.primaryMid },
-  offline: { label: "Offline", color: "#F28B82" },
+const GREETING = {
+  id: "greeting",
+  role: "assistant",
+  status: "done",
+  content:
+    "Namaste 🙏 Main Srish hoon, aapki kheti sahayak.\n\nTomato ki fasal ke baare mein kuch bhi poochiye — patte, rog, khaad ya paani. Hindi ya English, jo aasaan lage.\n\nAbhi main sirf **tomato** 🍅 mein madad kar sakti hoon.",
 };
+
+const QUICK = [
+  "🍂 Patte peele ho rahe hain",
+  "🐛 Patton par daag hain",
+  "💧 Kitna paani dein?",
+  "🧪 Kaun si khaad dein?",
+  "🌱 Mera khet kaisa hai?",
+];
 
 let seq = 0;
 const newId = () => `m${Date.now()}-${++seq}`;
@@ -50,7 +53,7 @@ function toHistory(messages) {
   return out;
 }
 
-export default function AssistantScreen() {
+export default function AssistantScreen({ route }) {
   const { farmId } = useAuth();
   const [messages, setMessages] = useState([]);
   const [draft, setDraft] = useState("");
@@ -58,6 +61,16 @@ export default function AssistantScreen() {
   const [server, setServer] = useState("checking");
   const listRef = useRef(null);
   const cancelRef = useRef(null);
+
+  // Other screens can open Srish with a question already typed in
+  // (navigate("Assistant", { prefill, nonce })). The farmer still taps send.
+  const prefill = route?.params?.prefill;
+  const nonce = route?.params?.nonce;
+  const [seenNonce, setSeenNonce] = useState(null);
+  if (prefill && nonce && nonce !== seenNonce) {
+    setSeenNonce(nonce);
+    setDraft(prefill);
+  }
 
   const ping = useCallback(() => {
     setServer("checking");
@@ -72,7 +85,7 @@ export default function AssistantScreen() {
       });
 
     poll();
-    // Keep checking, so the badge recovers on its own once the model is back up
+    // Keep checking, so the status recovers on its own once the model is back up
     // instead of waiting for the next send or a manual retry.
     const timer = setInterval(poll, 20000);
 
@@ -90,6 +103,7 @@ export default function AssistantScreen() {
       const question = text.trim();
       if (!question) return;
       const botId = newId();
+      const now = new Date().toISOString();
       const patch = (fn) =>
         setMessages((prev) => prev.map((m) => (m.id === botId ? { ...m, ...fn(m) } : m)));
       const finish = () => {
@@ -99,8 +113,8 @@ export default function AssistantScreen() {
 
       setMessages([
         ...base,
-        { id: newId(), role: "user", content: question, status: "done" },
-        { id: botId, role: "assistant", content: "", status: "pending", meta: null },
+        { id: newId(), role: "user", content: question, status: "done", at: now },
+        { id: botId, role: "assistant", content: "", status: "pending", meta: null, at: now },
       ]);
       setDraft("");
       setBusy(true);
@@ -122,20 +136,22 @@ export default function AssistantScreen() {
           // polite "cannot answer" reply. Treating that as proof of life showed
           // "Online" for a bot that could not answer anything, so trust the flag.
           setServer(r.backend_down ? "offline" : "online");
+          const at = new Date().toISOString();
           patch((m) => {
             if (r.backend_down) {
               return {
                 status: "error",
-                error: "Srish offline hai — model band hai. Laptop par model chalu karein.",
+                error: "Srish abhi aaram kar rahi hai 😴 Laptop par model chalu karke dobara bhejein.",
               };
             }
             const reply = r.reply || m.content;
             if (!reply) {
-              return { status: "error", error: "Srish abhi jawab nahi de paayi. Thodi der baad try karein." };
+              return { status: "error", error: "Jawab nahi aa paaya. Thodi der baad dobara bhejein." };
             }
             return {
               content: reply,
               status: "done",
+              at,
               meta: {
                 intent: r.intent ?? m.meta?.intent,
                 degraded: !!(r.degraded ?? m.meta?.degraded),
@@ -159,6 +175,9 @@ export default function AssistantScreen() {
   const send = (text = draft) => {
     if (!busy) ask(text, messages);
   };
+
+  // Quick replies carry a leading emoji for the eye; the question sent is the text.
+  const sendQuick = (label) => send(label.replace(/^\S+\s/, ""));
 
   const retry = (botId) => {
     if (busy) return;
@@ -195,31 +214,39 @@ export default function AssistantScreen() {
     setDraft("");
   };
 
-  const status = STATUS[server];
+  const subtitle = busy
+    ? "likh rahi hai…"
+    : server === "online"
+      ? "Kheti sahayak · online"
+      : server === "checking"
+        ? "jud rahi hai…"
+        : "abhi uplabdh nahi";
   const canSend = !!draft.trim() && !busy;
 
   return (
     <SafeAreaView style={s.safe} edges={["left", "right"]}>
       <TopInset />
 
-      {/* Deep-green header, continuing the status-bar strip */}
+      {/* Chat header, like a contact in a messaging app */}
       <View style={s.header}>
-        <SrishAvatar size={42} />
+        <View>
+          <SrishAvatar size={42} ring />
+          <View style={[s.presence, { backgroundColor: server === "online" ? "#4ADE80" : server === "checking" ? C.warn : "#9CA3AF" }]} />
+        </View>
         <View style={{ flex: 1, marginLeft: 12 }}>
           <Text style={s.title}>Srish</Text>
-          <View style={{ flexDirection: "row", alignItems: "center", marginTop: 2 }}>
-            <View style={[s.statusDot, { backgroundColor: status.color }]} />
-            <Text style={s.subtitle}>{status.label}</Text>
-          </View>
+          <Text style={s.subtitle} numberOfLines={1}>
+            {subtitle}
+          </Text>
         </View>
         {messages.length > 0 ? (
-          <Pressable onPress={newChat} hitSlop={10} style={s.headerBtn}>
-            <Icon name="chat-plus-outline" size={21} color={C.white} />
+          <Pressable onPress={newChat} hitSlop={10} style={s.headerBtn} accessibilityLabel="Nayi baat shuru karein">
+            <Icon name="square-edit-outline" size={21} color={C.white} />
           </Pressable>
         ) : null}
       </View>
 
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior="padding">
+      <KeyboardAvoidingView style={{ flex: 1, backgroundColor: CHAT_BG }} behavior="padding">
         <FlatList
           ref={listRef}
           data={messages}
@@ -231,25 +258,43 @@ export default function AssistantScreen() {
           onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
           renderItem={({ item }) =>
             item.role === "user" ? (
-              <UserBubble text={item.content} />
+              <UserBubble text={item.content} at={item.at} />
             ) : (
               <SrishBubble msg={item} onRetry={item.status === "error" ? () => retry(item.id) : null} />
             )
           }
           ListHeaderComponent={
-            server === "offline" && messages.length === 0 ? (
-              <Banner
-                tone="warn"
-                icon="cloud-off-outline"
-                title="Srish is offline"
-                message="Couldn't reach the assistant server. Check your internet, or ask your admin to start the Srish server."
-                action="Try again"
-                onAction={ping}
-                style={{ marginBottom: 14 }}
-              />
-            ) : null
+            <>
+              <DayChip label="Aaj" />
+              {messages.length > 0 ? <SrishBubble msg={GREETING} /> : null}
+            </>
           }
-          ListEmptyComponent={<Welcome onPick={send} disabled={busy} />}
+          ListEmptyComponent={
+            <View>
+              <SrishBubble msg={GREETING} />
+              {server === "offline" ? (
+                <Pressable onPress={ping} style={s.offline}>
+                  <Icon name="cloud-off-outline" size={16} color={C.warn} />
+                  <Text style={s.offlineTxt}>
+                    Srish abhi uplabdh nahi hai. <Text style={s.offlineLink}>Dobara check karein</Text>
+                  </Text>
+                </Pressable>
+              ) : null}
+              <Text style={s.quickHead}>Ya inme se chunein</Text>
+              <View style={s.quickWrap}>
+                {QUICK.map((q) => (
+                  <Pressable
+                    key={q}
+                    disabled={busy}
+                    onPress={() => sendQuick(q)}
+                    style={({ pressed }) => [s.quick, pressed && { backgroundColor: C.primarySoft }]}
+                  >
+                    <Text style={s.quickTxt}>{q}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          }
         />
 
         {/* Composer */}
@@ -258,7 +303,7 @@ export default function AssistantScreen() {
             <TextInput
               value={draft}
               onChangeText={setDraft}
-              placeholder="Tomato ke baare mein poochiye…"
+              placeholder="Apna sawaal likhiye…"
               placeholderTextColor={C.textFaint}
               style={s.input}
               multiline
@@ -267,7 +312,7 @@ export default function AssistantScreen() {
           </View>
           {busy ? (
             <Pressable onPress={stop} style={({ pressed }) => [s.sendBtn, s.stopBtn, pressed && { opacity: 0.85 }]}>
-              <Icon name="stop" size={22} color={C.danger} />
+              <Icon name="stop" size={22} color={C.white} />
             </Pressable>
           ) : (
             <Pressable
@@ -275,7 +320,7 @@ export default function AssistantScreen() {
               disabled={!canSend}
               style={({ pressed }) => [s.sendBtn, !canSend && s.sendBtnOff, pressed && { opacity: 0.85 }]}
             >
-              <Icon name="send" size={20} color={C.white} />
+              <Icon name="send" size={20} color={C.white} style={{ marginLeft: 2 }} />
             </Pressable>
           )}
         </View>
@@ -284,40 +329,8 @@ export default function AssistantScreen() {
   );
 }
 
-function Welcome({ onPick, disabled }) {
-  return (
-    <View>
-      <Card style={s.hero}>
-        <SrishAvatar size={58} />
-        <Text style={s.heroTitle}>Namaste! Main Srish hoon 🍅</Text>
-        <Text style={s.heroBody}>
-          Tomato ki kheti, bimariyan, khaad-paani aur aapke khet ke sensor data ke baare mein kuch bhi poochiye —
-          Hindi ya English mein.
-        </Text>
-        <Badge label="Abhi sirf tomato ke liye trained" icon="information-outline" tone="info" style={{ marginTop: 12, alignSelf: "center" }} />
-      </Card>
-
-      <Text style={s.suggestHead}>Try asking</Text>
-      {SUGGESTIONS.map((q) => (
-        <Pressable
-          key={q.text}
-          disabled={disabled}
-          onPress={() => onPick(q.text)}
-          style={({ pressed }) => [s.suggest, pressed && { opacity: 0.8 }]}
-        >
-          <View style={s.suggestIcon}>
-            <Icon name={q.icon} size={18} color={C.primary} />
-          </View>
-          <Text style={s.suggestTxt}>{q.text}</Text>
-          <Icon name="arrow-top-right" size={18} color={C.textFaint} />
-        </Pressable>
-      ))}
-    </View>
-  );
-}
-
 const s = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: C.bg },
+  safe: { flex: 1, backgroundColor: C.deep },
 
   header: {
     flexDirection: "row",
@@ -325,79 +338,86 @@ const s = StyleSheet.create({
     backgroundColor: C.deep,
     paddingHorizontal: 16,
     paddingTop: 6,
-    paddingBottom: 14,
+    paddingBottom: 12,
   },
-  title: { fontSize: 21, fontWeight: "900", color: C.white, letterSpacing: -0.4 },
-  subtitle: { fontSize: 12.5, color: C.onDeep, fontWeight: "600" },
-  statusDot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
+  presence: {
+    position: "absolute",
+    right: 0,
+    bottom: 0,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: C.deep,
+  },
+  title: { fontSize: 19, fontWeight: "900", color: C.white, letterSpacing: -0.3 },
+  subtitle: { fontSize: 12.5, color: C.onDeep, fontWeight: "600", marginTop: 1 },
   headerBtn: {
     width: 40,
     height: 40,
-    borderRadius: 12,
-    backgroundColor: "rgba(255,255,255,0.14)",
+    borderRadius: 20,
     alignItems: "center",
     justifyContent: "center",
   },
 
-  list: { padding: 16, paddingBottom: 8, flexGrow: 1 },
+  list: { paddingHorizontal: 12, paddingTop: 12, paddingBottom: 8, flexGrow: 1 },
 
-  hero: { alignItems: "center", paddingVertical: 22 },
-  heroTitle: { fontSize: 19, fontWeight: "900", color: C.text, marginTop: 12, letterSpacing: -0.3 },
-  heroBody: { fontSize: 14, color: C.textMuted, textAlign: "center", lineHeight: 20, marginTop: 6 },
-
-  suggestHead: { fontSize: 13, fontWeight: "800", color: C.textMuted, marginTop: 18, marginBottom: 8, marginLeft: 2 },
-  suggest: {
+  offline: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: C.card,
-    borderRadius: RADIUS.md,
-    borderWidth: 1,
-    borderColor: C.border,
-    padding: 12,
-    marginBottom: 8,
-  },
-  suggestIcon: {
-    width: 32,
-    height: 32,
+    gap: 6,
+    alignSelf: "center",
+    backgroundColor: C.warnSoft,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: 10,
-    backgroundColor: C.primarySoft,
-    alignItems: "center",
-    justifyContent: "center",
-    marginRight: 10,
+    marginVertical: 6,
   },
-  suggestTxt: { flex: 1, fontSize: 14, color: C.text, fontWeight: "600" },
+  offlineTxt: { fontSize: 12.5, color: C.text, flexShrink: 1 },
+  offlineLink: { fontWeight: "800", color: C.warn },
+
+  quickHead: { fontSize: 12.5, fontWeight: "700", color: C.textMuted, marginTop: 10, marginBottom: 8, marginLeft: 4 },
+  quickWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
+  quick: {
+    backgroundColor: C.white,
+    borderWidth: 1,
+    borderColor: C.primaryMid,
+    borderRadius: 18,
+    paddingHorizontal: 13,
+    paddingVertical: 8,
+  },
+  quickTxt: { fontSize: 14, color: C.primaryDark, fontWeight: "700" },
 
   composer: {
     flexDirection: "row",
     alignItems: "flex-end",
-    paddingHorizontal: 12,
-    paddingTop: 8,
-    paddingBottom: 10,
-    backgroundColor: C.white,
-    borderTopWidth: 1,
-    borderTopColor: C.border,
-    gap: 8,
+    paddingHorizontal: 8,
+    paddingTop: 6,
+    paddingBottom: 8,
+    gap: 6,
   },
   inputWrap: {
     flex: 1,
-    borderWidth: 1.5,
-    borderColor: C.border,
-    backgroundColor: "#FAFCFB",
-    borderRadius: 22,
-    paddingHorizontal: 14,
-    minHeight: 46,
+    backgroundColor: C.white,
+    borderRadius: 24,
+    paddingHorizontal: 16,
+    minHeight: 48,
     justifyContent: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
-  input: { fontSize: 15.5, color: C.text, maxHeight: 110, paddingVertical: 10 },
+  input: { fontSize: 16, color: C.text, maxHeight: 110, paddingVertical: 10 },
   sendBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     backgroundColor: C.primary,
     alignItems: "center",
     justifyContent: "center",
-    ...SHADOW,
   },
-  sendBtnOff: { backgroundColor: C.primaryMid, elevation: 0, shadowOpacity: 0 },
-  stopBtn: { backgroundColor: C.dangerSoft, borderWidth: 1.5, borderColor: C.danger + "55", elevation: 0 },
+  sendBtnOff: { backgroundColor: C.primaryMid },
+  stopBtn: { backgroundColor: C.danger },
 });
