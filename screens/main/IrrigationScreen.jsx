@@ -38,7 +38,7 @@ export default function IrrigationScreen() {
   const delivered = events.reduce((a, e) => a + (Number(e.delivered_volume_l) || 0), 0);
 
   return (
-    <Screen title="Irrigation" subtitle="AI decisions and pump runs" refreshing={refreshing} onRefresh={reload}>
+    <Screen title="Watering" subtitle="When water was needed and given" refreshing={refreshing} onRefresh={reload}>
       <View style={s.summary}>
         <Summary icon="robot-outline" tone="primary" value={decisions.length} label="Decisions" />
         <Summary icon="water-pump" tone="water" value={triggered} label="Irrigate calls" />

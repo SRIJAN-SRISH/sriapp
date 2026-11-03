@@ -23,6 +23,11 @@ const NODES = [
 ];
 
 const TERMS = [
+  ["Water in soil", "How wet the soil is. Very dry → Getting dry → Just right → Too wet. Water when it says Getting dry."],
+  ["Sourness (pH)", "Whether the soil is sour (acidic) or alkaline. Tomato grows best between 6 and 7."],
+  ["Fertiliser (EC)", "How much fertiliser and salt is dissolved in the soil. Too low = hungry plants, too high = roots get burnt."],
+  ["N · P · K", "Plant food. Nitrogen for green leaves, Phosphorus for roots and flowers, Potassium for fruit size and taste."],
+  ["Fungus risk", "Very damp air (85% humidity or more) lets blight and leaf spots spread on tomato."],
   ["Moisture (VWC)", "How much of the soil volume is water, in %."],
   ["Field capacity", "The wettest the soil stays after draining — above this, water is wasted."],
   ["Wilting point", "Below this the crop can't pull water from the soil."],

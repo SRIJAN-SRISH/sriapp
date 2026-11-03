@@ -66,7 +66,7 @@ export default function DeviceListScreen({ navigation }) {
   const faults = healthFaults(latest?.health_flag);
 
   return (
-    <Screen title="Devices" subtitle={`${farmId} · 3-node system`} refreshing={refreshing || logsState.refreshing} onRefresh={refreshAll}>
+    <Screen title="Devices" subtitle={`${farmId} · 3-node system`} back refreshing={refreshing || logsState.refreshing} onRefresh={refreshAll}>
       {loading && !data ? (
         <LoadingBlock />
       ) : error && !data ? (
