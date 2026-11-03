@@ -24,8 +24,8 @@
 import Constants from "expo-constants";
 
 const CANDIDATES = [
-  "http://100.112.55.89:8000", // Tailscale — stable across networks
   "http://192.168.1.39:8000", // LAN (DHCP — expect this to change)
+  "http://100.112.55.89:8000", // Tailscale — only when that VPN is running
   "http://192.168.1.14:8000", // previous LAN address
 ];
 
@@ -44,6 +44,48 @@ export const SRISH_API_PINNED = !!configured();
 // whichever candidate actually answered.
 export let SRISH_API_URL = clean(configured() || CANDIDATES[0]);
 
+async function probe(base, timeoutMs) {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    const res = await fetch(`${clean(base)}/health`, { signal: ctrl.signal });
+    clearTimeout(timer);
+    return res.ok;
+  } catch {
+    return false; // unreachable on this address
+  }
+}
+
+/** First address to answer, or null if none do.
+ *
+ * Deliberately concurrent. Probing in sequence means every dead entry costs a
+ * full timeout before the live one is tried — with the VPN switched off that
+ * was seconds of delay on each health check, for an address that was never
+ * going to answer. Racing them makes a dead candidate free.
+ *
+ * Written with counters rather than Promise.any, which is not reliably present
+ * across the JS engines React Native ships.
+ */
+function firstReachable(bases, timeoutMs) {
+  return new Promise((resolve) => {
+    let pending = bases.length;
+    if (!pending) return resolve(null);
+    let settled = false;
+
+    bases.forEach((base) => {
+      probe(base, timeoutMs).then((ok) => {
+        if (settled) return;
+        if (ok) {
+          settled = true;
+          resolve(clean(base));
+        } else if (--pending === 0) {
+          resolve(null);
+        }
+      });
+    });
+  });
+}
+
 /** Find a reachable API address, remember it, and return it.
  *
  * Returns null when nothing answered, which the caller should treat as the bot
@@ -53,22 +95,17 @@ export let SRISH_API_URL = clean(configured() || CANDIDATES[0]);
 export async function resolveSrishUrl(timeoutMs = 2500) {
   if (SRISH_API_PINNED) return SRISH_API_URL;
 
-  // Try the one that worked last first, so the usual case costs one request.
-  const ordered = [SRISH_API_URL, ...CANDIDATES.filter((c) => clean(c) !== SRISH_API_URL)];
+  // The address that worked last time usually still works, so give it a solo
+  // attempt before fanning out. Deliberately a shorter timeout than the fan-out
+  // gets: this is an optimisation for the common case, and when it misses its
+  // cost is added to the real lookup rather than replacing it.
+  if (await probe(SRISH_API_URL, Math.min(timeoutMs, 1200))) return SRISH_API_URL;
 
-  for (const base of ordered) {
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-      const res = await fetch(`${clean(base)}/health`, { signal: ctrl.signal });
-      clearTimeout(timer);
-      if (res.ok) {
-        SRISH_API_URL = clean(base);
-        return SRISH_API_URL;
-      }
-    } catch {
-      // Unreachable on this address; try the next.
-    }
+  const rest = CANDIDATES.filter((c) => clean(c) !== SRISH_API_URL);
+  const found = await firstReachable(rest, timeoutMs);
+  if (found) {
+    SRISH_API_URL = found;
+    return found;
   }
   return null;
 }
