@@ -9,27 +9,65 @@
 //   EXPO_PUBLIC_SRISH_API_URL=http://192.168.1.39:8000 npx expo start
 // or set expo.extra.srishApiUrl in app.json for a build.
 //
-// CANDIDATES below exist because the Wi-Fi address is handed out by DHCP and
-// changes whenever the laptop reconnects — the app showed "Offline" for a
-// perfectly healthy server purely because the baked-in address had gone stale.
-// Rather than depend on one guess, the app probes the candidates at startup
-// and keeps the first that answers. `srish status` on the laptop prints its
-// current addresses.
+// The address is worked out at runtime rather than written down, because the
+// laptop's Wi-Fi address is a DHCP lease: it moved from .14 to .39 on one
+// reconnect, and the app showed "Offline" against a perfectly healthy server
+// purely because the compiled-in address had gone stale.
 //
-// A Tailscale address is listed first on purpose: it belongs to the machine
-// rather than the network, so it survives changing Wi-Fi. It only works if the
-// phone is on the same tailnet; if it is not, the probe falls through to the
-// LAN address, costing one failed request at startup.
+// The reliable source is Expo itself. While `npx expo start` is running, the
+// phone is already talking to Metro ON THE LAPTOP, so Expo knows that host --
+// and it is the same machine serving this API. Reading it there means the
+// address is always current, with nothing to configure and no VPN involved.
+//
+// Order of preference:
+//   1. EXPO_PUBLIC_SRISH_API_URL / expo.extra.srishApiUrl — explicit wins
+//   2. the Metro host, i.e. wherever this app was loaded from
+//   3. previously seen addresses, for a standalone build with no Metro
+//
+// `srish status` on the laptop prints its current addresses.
 
 import Constants from "expo-constants";
 
-const CANDIDATES = [
-  "http://192.168.1.39:8000", // LAN (DHCP — expect this to change)
-  "http://100.112.55.89:8000", // Tailscale — only when that VPN is running
-  "http://192.168.1.14:8000", // previous LAN address
+const API_PORT = 8000;
+
+// Addresses seen before. Only used by a standalone build, where there is no
+// Metro host to learn from.
+const FALLBACKS = [
+  `http://192.168.1.39:${API_PORT}`,
+  `http://192.168.1.14:${API_PORT}`,
 ];
 
 const clean = (u) => String(u || "").replace(/\/+$/, "");
+
+/** The laptop's current address, taken from wherever this app was loaded.
+ *
+ * Expo reports that host in different places across SDKs and launch modes, so
+ * check each. The value looks like "192.168.1.39:8081" or a full URL; keep the
+ * host and swap in the API port.
+ */
+function hostFromExpo() {
+  const raw =
+    Constants.expoConfig?.hostUri ||
+    Constants.expoGoConfig?.debuggerHost ||
+    Constants.manifest2?.extra?.expoGo?.debuggerHost ||
+    Constants.manifest?.debuggerHost ||
+    Constants.linkingUri ||
+    "";
+
+  const host = String(raw)
+    .replace(/^\w+:\/\//, "") // strip any scheme
+    .split("/")[0] // drop any path
+    .split("?")[0]
+    .split(":")[0]; // drop Metro's port
+
+  // Only an IP is useful here. A tunnel gives a .exp.direct hostname, which
+  // serves the bundle but is not this API, and "localhost" would mean the
+  // phone itself.
+  if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(host)) return null;
+  if (host.startsWith("127.")) return null;
+
+  return `http://${host}:${API_PORT}`;
+}
 
 function configured() {
   const fromEnv = process.env.EXPO_PUBLIC_SRISH_API_URL;
@@ -37,12 +75,21 @@ function configured() {
   return fromEnv || fromExtra || null;
 }
 
+// Metro's host first: in development it is the laptop, and it is always right.
+const CANDIDATES = [hostFromExpo(), ...FALLBACKS].filter(Boolean);
+
+/** Where the app looked, for a diagnostics line in the UI. */
+export const SRISH_API_CANDIDATES = CANDIDATES;
+export const SRISH_API_FROM_METRO = hostFromExpo();
+
 // An explicit setting always wins and is never probed around.
 export const SRISH_API_PINNED = !!configured();
 
 // Mutable: starts at the best guess, and resolveSrishUrl() may move it to
 // whichever candidate actually answered.
-export let SRISH_API_URL = clean(configured() || CANDIDATES[0]);
+export let SRISH_API_URL = clean(
+  configured() || CANDIDATES[0] || `http://localhost:${API_PORT}`,
+);
 
 async function probe(base, timeoutMs) {
   try {
