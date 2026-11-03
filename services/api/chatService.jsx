@@ -8,9 +8,10 @@
 // turns as `history`, oldest first, WITHOUT the message being sent.
 
 import {
-  SRISH_API_URL,
   SRISH_HISTORY_TURNS,
   SRISH_TIMEOUT_MS,
+  getSrishUrl,
+  resolveSrishUrl,
 } from "../../config/srish";
 
 const OFFLINE =
@@ -45,9 +46,15 @@ function body(message, history, { farmId, depth } = {}) {
  */
 export async function srishHealth() {
   try {
+    // Find a reachable address first. The laptop's Wi-Fi address is handed out
+    // by DHCP and changes, which showed the app as Offline against a server
+    // that was running fine.
+    const base = await resolveSrishUrl();
+    if (!base) return null;
+
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 8000);
-    const res = await fetch(`${SRISH_API_URL}/health`, { signal: ctrl.signal });
+    const res = await fetch(`${base}/health`, { signal: ctrl.signal });
     clearTimeout(timer);
     if (!res.ok) return null;
     const h = await res.json();
@@ -87,7 +94,7 @@ export async function askSrish(message, history = [], opts = {}) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), SRISH_TIMEOUT_MS);
   try {
-    const res = await fetch(`${SRISH_API_URL}/chat`, {
+    const res = await fetch(`${getSrishUrl()}/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: body(message, history, opts),
@@ -155,7 +162,7 @@ export function streamSrish(message, history = [], handlers = {}) {
     }
   };
 
-  xhr.open("POST", `${SRISH_API_URL}/chat/stream`);
+  xhr.open("POST", `${getSrishUrl()}/chat/stream`);
   xhr.setRequestHeader("Content-Type", "application/json");
   xhr.timeout = SRISH_TIMEOUT_MS;
 
